@@ -69,29 +69,36 @@ if VIS_DATA:
 # ------------------------------------------------------------------------------------------
 
 A = np.array([
-    [1, Delta_t],
-    [0, 1]
+    [1, Delta_t, Delta_t**2*0.5],
+    [0, 1, Delta_t],
+    [0, 0, 1]
 ])  # 状态转移矩阵
-B = np.array([
-    [Delta_t**2*0.5],
-    [Delta_t]
-])  # 控制转移矩阵
+
 Q_var = 0.005
 Q = np.array([
-    [Q_var, 0],
-    [0, Q_var]
+    [Q_var, 0, 0],
+    [0, Q_var, 0],
+    [0, 0, Q_var]
 ])  # 预测噪声协方差矩阵
+P_var = 1e-5
 P0 = np.array([
-    [0.0, 0],
-    [0.0, 0]
+    [P_var, 0, 0],
+    [0.0, P_var, 0],
+    [0, 0, P_var]
 ])  # 状态向量协方差初始值
+
 H = np.array([
-1/C, 0
-]).reshape((1,2))  # 测量转换矩阵
-R_var = 0.001 
-R = R_var  # 测量协方差矩阵，此时只有一个测量变量，因此只有一个值
+    [1/C, 0, 0],
+    [0, 0, 1]
+])  # 测量转换矩阵
+R_var = 0.0001
+R = np.array([
+    [R_var, 0],
+    [0, R_var*5],
+])  # 测量协方差矩阵，此时只有一个测量变量，因此只有一个值
 
 x0 = np.array([
+    [0],
     [0],
     [0]
 ])  # 系统状态向量初始化，速度和距离均初始化为0
@@ -104,18 +111,23 @@ K = None
 
 est_vel = [0]
 est_dist = [0]
+est_acc = [0]
 for i in range(N_steps):
     if i == 0:
         x_t = x0
         P_t = P0
         continue
-    u = np.array([accs_w_noise[i]])
-    x_t_ = A@x_t + B*u  # 预测方程
+
+    x_t_ = A@x_t  # 预测方程
     P_t_ = A@P_t@(A.T) + Q  # 预测状态向量的协方差矩阵
     
 
-    K = P_t_@H.T / (H@P_t_@H.T + R)  # 卡尔曼增益
-    x_t = x_t_ + K*(zs_w_noise[i] - H@x_t_)  # 更新方程
+    K = P_t_@H.T @ np.linalg.inv((H@P_t_@H.T + R))  # 卡尔曼增益
+    zt = np.array([
+        [zs_w_noise[i]],
+        [accs_w_noise[i]]
+    ])
+    x_t = x_t_ + K@(zt - H@x_t_)  # 更新方程
     P_t = P_t_ - K@H@P_t_  # 更新状态向量协方差矩阵
 
     est_vel.append(x_t[1][0])
