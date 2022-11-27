@@ -17,13 +17,13 @@ zs_gt = dists_gt/C
 # add noise to acceleration signals and calculate the velocity and distance with simple integral
 # 往加速度信号添加噪声模拟真实传感器信号，并用简单的积分计算速度和距离
 accs_noise_var = 0.005  # set acceleration noise variation as 0.5
-accs_noise = np.random.rand(N_steps) * accs_noise_var
+accs_noise = np.random.rand(N_steps) * accs_noise_var  # 注意，这里使用均匀分布模拟噪声，以模拟不知道真实噪声分布情况
 accs_w_noise = accs_gt + accs_noise
 vels_w_noise = np.cumsum(accs_w_noise*Delta_t)
 # vels_w_noise = np.cumsum(accs_noise * Delta_t)
 dists_w_noise = np.cumsum(vels_w_noise*Delta_t)
 zs_noise_var = 0.001
-zs_noise = np.random.rand(N_steps) * zs_noise_var
+zs_noise = np.random.rand(N_steps) * zs_noise_var  # 注意，这里使用均匀分布模拟噪声，以模拟不知道真实噪声分布情况
 zs_w_noise = zs_gt + zs_noise
 #---------------------------------
 VIS_DATA = True
