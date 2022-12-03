@@ -1,29 +1,46 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.spatial.transform import Rotation as R
 np.random.seed(0)
 # -----------------------------------------
 '''
-# 数据生成
-# 定义状态向量为：[x,y,theta,speed,omega]
-# 观测向量为：[speed,omega]
-# 则f(x_{k-1},u_k,0) = [[x_{k-1}+cos(theta)*speed*deltaT],
-#                       [y_{k-1}+sin(theta)*speed*deltaT],
-#                       [theta_{k-1}+omega*deltaT],
-#                       [speed_{k-1}],
-#                       [omega_{k-1}]]
-# f的雅各比矩阵为：A = [[1 0 speed_{k-1}*deltaT cos(theta_{k-1})*deltaT 0]
-#                      [0 1 speed_{k-1}*deltaT sin(theta_{k-1})*deltaT 0]
-#                      [0 0 1 0 deltaT]
-#                      [0 0 0 1 0]
-#                      [0 0 0 0 1]]
+例子：假设有一辆小车从远点出发，在平面上进行运动。每个DeltaT时间，小车上的传感器
+可以返回小车的速度speed和角速度omega。且每一时刻可以通过探测得到小车距离原点的距离。
+希望得到小车每一时刻的x坐标和y坐标。
+
+状态向量：将小车的x坐标、y坐标、小车车身的角度theta、速度speed和角速度omega作为系统状态向量（5维度）
+观测向量：将小车距离原点的距离的平方，速度speed和角速度omega作为系统观测向量
+
+状态方程：小车的x坐标等于上一时刻的x坐标，加上这一个时间段内行使的距离speed*Delta乘以cos(theta)
+'''
+
+'''
+数据生成
+定义状态向量为：[x,y,theta,speed,omega]
+观测向量为：[dist, speed,omega]
+则f(x_{k-1},u_k,0) = [[x_{k-1}+cos(theta)*speed*deltaT],
+                      [y_{k-1}+sin(theta)*speed*deltaT],
+                      [theta_{k-1}+omega*deltaT],
+                      [speed_{k-1}],
+                      [omega_{k-1}]]
+f的雅各比矩阵为：A = [[1 0 -sin(theta_{k-1}*speed_{k-1}*deltaT cos(theta_{k-1})*deltaT 0]
+                     [0 1 cos(theta_{k-1})*speed_{k-1}*deltaT sin(theta_{k-1})*deltaT 0]
+                     [0 0 1 0 deltaT]
+                     [0 0 0 1 0]
+                     [0 0 0 0 1]]
+
+观测方程h(x_k,0) = [[(x_k)**2+(y_k)**2],
+                    [speed],
+                    [omega]]
+
+h的雅各比矩阵为：H = [[2*x, 2*y, 0, 0, 0],
+                     [0, 0, 0, 1, 0],
+                     [0, 0, 0, 0, 1]]
 '''
 
 N_steps = 1000  # 1000 steps to estimate
 Delta_t = 0.1  # 0.1s
 timeline = np.arange(N_steps) * Delta_t
-# omega = np.sin(timeline/10)  # 角速度，rad/s
-omega = np.ones(N_steps) * 0.01
+omega = np.ones(N_steps) * 0.01  # 角速度，rad/s
 speed_c = 0.1
 speed = np.ones(N_steps) * speed_c  # 速度，m/s
 zs_gt = np.stack([speed, omega], axis=0)
@@ -34,7 +51,7 @@ omega_noise = np.random.randn(N_steps) * omega_noise_var
 speed_w_noise = speed + speed_noise
 omega_w_noise = omega + omega_noise
 zs_w_noise = np.stack((speed_w_noise, omega_w_noise), axis=0)
-x0 = [0, 0, 0, 0, 0]  # x,y,theta
+x0 = [0, 0, 0, 0, 0]  # x,y,theta,speed,omega
 xs = []
 xt = x0
 xt_noise = x0
@@ -63,6 +80,8 @@ dist_w_noise = dist_to_origin_gt + dist_noise
 #---------------------------------
 
 def state_forward(x_t):
+    """状态方程，将上一时刻状态映射为当前时刻状态
+    """
     a, b, theta, s, omega = x_t
     xt_next = np.array([
         a+np.cos(theta)*s*Delta_t,
@@ -74,6 +93,8 @@ def state_forward(x_t):
     return xt_next
 
 def get_A(x_t):
+    """对状态方程相对于状态向量求雅各比矩阵
+    """
     a, b, theta, s, omega = x_t.reshape(-1)
     A = np.array([
         [1., 0, -np.sin(theta)*s*Delta_t, np.cos(theta)*Delta_t, 0],
@@ -85,6 +106,8 @@ def get_A(x_t):
     return A
 
 def get_H(x_t):
+    """对观测方程相对于状态向量求雅各比矩阵
+    """
     a, b, theta, s, omega = x_t.reshape(-1)
     H = np.array([
         [2*a, 2*b, 0, 0, 0],
@@ -96,8 +119,9 @@ def get_H(x_t):
 # ------------------------------------------------------------------------------------------
 # 设置初始值
 x0 = np.array([0., 0., 0, 0, 0]).reshape(-1, 1)  # 系统状态向量初始值，假设未知，随便设为0
-# P0 = np.eye(5) * 1.0  # 系统状态初始协方差，由于x0是不准确的，因此P0不能为0
-P0 = np.array([
+# 系统状态初始协方差，由于x0是不准确的，因此P0不能为0
+# P0如果设置为只有对角线有值，似乎对结果影响较大
+P0 = np.array([  
     [10, 10, 1, 0, 0],
     [10, 10, 1, 0, 0],
     [1, 1, 0.1, 0, 0],
@@ -105,17 +129,19 @@ P0 = np.array([
     [0, 0, 0, 0, 1e-8]
 ])
 
-Q = np.eye(5) * 0.01  # 过程噪声的协方差，需要调整的参数
+# 过程噪声的协方差，需要调整的参数
 Q = np.array([
     [0.01, 0, 0, 0, 0],
     [0, 0.01, 0, 0, 0],
     [0, 0, 0.0001, 0, 0],
     [0, 0, 0, 0.01, 0],
-    [0, 0, 0, 0, 0.0001]
+    [0, 0, 0, 0, 0.01]
 ])
+
+# 观测噪声协方差矩阵
 R = np.array([
     [0.0001, 0, 0],
-    [0., 0.001, 0],
+    [0., 0.0001, 0],
     [0, 0, 0.0001]
 ]) # 观测噪声的协方差，需要调整的参数
 
@@ -128,6 +154,7 @@ K = None
 kf_result = []
 x_t = x0
 P_t = P0
+# 以下是卡尔曼滤波的过程
 for i in range(N_steps):
 
     x_t_ = state_forward(x_t)  # 预测方程
